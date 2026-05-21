@@ -1,13 +1,13 @@
+from datetime import timedelta
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
 from django.utils import timezone
-from datetime import timedelta
 
 
 class CustomUserManager(BaseUserManager):
     """
     Technical class for creating users.
-    Login is done ONLY by Email (no username and no phone).
+    Login is done only by email
     """
 
     def create_user(self, email, password=None, **extra_fields):
@@ -28,9 +28,42 @@ class CustomUserManager(BaseUserManager):
         return self.create_user(email, password, **extra_fields)
 
 
+class Group(models.Model):
+    """
+    Academic groups
+    """
+
+    name = models.CharField(max_length=50, unique=True)
+
+    def __str__(self):
+        return self.name
+
+
+class Department(models.Model):
+    """
+    University departments/faculties
+    """
+
+    name = models.CharField(max_length=255, unique=True)
+
+    def __str__(self):
+        return self.name
+
+
+class Course(models.Model):
+    """
+    Subjects/Courses taught at the university
+    """
+
+    name = models.CharField(max_length=255, unique=True)
+
+    def __str__(self):
+        return self.name
+
+
 class CustomUser(AbstractUser):
     """
-    Main user table (Students, Teachers, Admins).
+    Main user table (Students, Teachers, Admins)
     """
 
     class Role(models.TextChoices):
@@ -41,7 +74,6 @@ class CustomUser(AbstractUser):
     username = None
 
     email = models.EmailField(unique=True)
-    # The phone number is just an information field in the profile.
     phone_number = models.CharField(max_length=20, null=True, blank=True)
     first_name = models.CharField(max_length=150)
     last_name = models.CharField(max_length=150)
@@ -49,8 +81,22 @@ class CustomUser(AbstractUser):
     record_book_number = models.CharField(
         max_length=50, unique=True, null=True, blank=True
     )
-    # First login flag. If False -> show the "Set permanent password" form
     is_password_changed = models.BooleanField(default=False)
+
+    group = models.ForeignKey(
+        Group,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="students",
+    )
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="teachers",
+    )
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["first_name", "last_name"]
@@ -58,13 +104,12 @@ class CustomUser(AbstractUser):
     objects = CustomUserManager()
 
     def __str__(self):
-        return f"{self.first_name} {self.last_name}"
+        return f"{self.first_name} {self.last_name} ({self.role})"
 
 
 class OTPCode(models.Model):
     """
-    Table for saving one-time codes (generation at first login or Reset Password).
-    Limitations: code is valid for 3 minutes, max 5 entry attempts.
+    Table for saving one-time codes (generation at first login or reset password).
     """
 
     user = models.ForeignKey(

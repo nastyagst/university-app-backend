@@ -1,8 +1,14 @@
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
-from .serializers import OTPRequestSerializer, OTPVerifySerializer
+from .serializers import (
+    OTPRequestSerializer,
+    OTPVerifySerializer,
+    FirstLoginSerializer,
+    UserProfileSerializer,
+)
 from .models import CustomUser
 from .services import generate_and_send_otp
 
@@ -57,4 +63,54 @@ class OTPVerifyView(APIView):
                 status=status.HTTP_200_OK,
             )
 
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class FirstLoginView(APIView):
+    """
+    POST /api/auth/profile/first-login/
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+
+        if user.is_password_changed:
+            return Response(
+                {"detail": "Profile data has already been set during the first login."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer = FirstLoginSerializer(user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {
+                    "message": "Profile updated successfully.",
+                    "user": serializer.data,
+                },
+                status=status.HTTP_200_OK,
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserProfileView(APIView):
+    """
+    GET /api/auth/profile/ - Retrieve current user profile
+    PATCH /api/auth/profile/ - Update personal data
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        serializer = UserProfileSerializer(request.user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def patch(self, request):
+        serializer = UserProfileSerializer(
+            request.user, data=request.data, partial=True
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
