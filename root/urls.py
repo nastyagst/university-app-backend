@@ -1,14 +1,7 @@
 from django.contrib import admin
-from django.urls import path
-from django.http import JsonResponse
-
-
-# test view
-def hello_world(request):
-    return JsonResponse({"message": "Hello world!"})
-
+from django.urls import path, include
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("", hello_world),
+    path("api/", include("users.urls")),
 ]
