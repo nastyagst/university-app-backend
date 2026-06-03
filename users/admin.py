@@ -82,115 +82,105 @@ class ScheduleResource(resources.ModelResource):
     class Meta:
         model = ScheduleEntry
         fields = (
-            "id",
-            "day",
-            "time_slot_name",
-            "subject",
-            "teacher_name",
-            "group_name",
-            "auditorium",
-            "course_offering_id",
-            "room_id",
-            "time_slot_id",
+            "id", "day", "time_slot_name", "subject", "teacher_name",
+            "group_name", "auditorium", "course_offering_id", "room_id", "time_slot_id"
         )
         export_order = (
-            "day",
-            "time_slot_name",
-            "subject",
-            "teacher_name",
-            "group_name",
-            "auditorium",
+            "day", "time_slot_name", "subject", "teacher_name", "group_name", "auditorium"
         )
         use_bulk = False
 
-    @classmethod
-    def get_display_name(cls):
-        return "Schedule Template"
-
-    def dehydrate_time_slot_name(self, schedule_entry):
-        return (
-            f"Пара {schedule_entry.time_slot.number}"
-            if schedule_entry.time_slot
-            else ""
-        )
-
-    def dehydrate_subject(self, schedule_entry):
-        return (
-            schedule_entry.course_offering.course.name
-            if schedule_entry.course_offering
-            else ""
-        )
-
-    def dehydrate_teacher_name(self, schedule_entry):
-        return (
-            schedule_entry.course_offering.teacher.last_name
-            if schedule_entry.course_offering
-            else ""
-        )
-
-    def dehydrate_group_name(self, schedule_entry):
-        return (
-            schedule_entry.course_offering.group.name
-            if schedule_entry.course_offering
-            else ""
-        )
-
-    def dehydrate_auditorium(self, schedule_entry):
-        return schedule_entry.room.number if schedule_entry.room else ""
+    def skip_row(self, instance, original, row, import_validation_errors=None):
+        required_fields = ["Day", "Time Slot", "Subject", "Teacher Name", "Group Name", "Auditorium"]
+        if not any(row.get(field) for field in required_fields):
+            return True
+        return super().skip_row(instance, original, row, import_validation_errors)
 
     def before_import(self, dataset, **kwargs):
-        if "id" not in dataset.headers:
-            dataset.append_col([None] * len(dataset), header="id")
-        if "_course_offering_id" not in dataset.headers:
-            dataset.append_col([None] * len(dataset), header="_course_offering_id")
-        if "_room_id" not in dataset.headers:
-            dataset.append_col([None] * len(dataset), header="_room_id")
-        if "_time_slot_id" not in dataset.headers:
-            dataset.append_col([None] * len(dataset), header="_time_slot_id")
+        for col_name in ["id", "_course_offering_id", "_room_id", "_time_slot_id"]:
+            if col_name not in dataset.headers:
+                dataset.append_col([None] * len(dataset), header=col_name)
 
-        dry_run = kwargs.get("dry_run", False)
-        if not dry_run:
-            ScheduleEntry.objects.all().delete()
+        ScheduleEntry.objects.all().delete()
+
+        self.courses_cache = {c.name.strip().lower(): c for c in Course.objects.all()}
+        self.groups_cache = {g.name.strip().lower(): g for g in Group.objects.all()}
+        self.rooms_cache = {r.number.strip().lower(): r for r in Room.objects.all()}
+        self.time_slots_cache = {t.number: t for t in TimeSlot.objects.all()}
+
+        self.teachers_cache = {}
+        for user in CustomUser.objects.filter(role="TEACHER"):
+            if user.last_name:
+                self.teachers_cache[user.last_name.strip().lower()] = user
+
+        self.semester = Semester.objects.last()
+
+        self.booked_slots = set()
 
     def before_import_row(self, row, **kwargs):
-        semester = Semester.objects.last()
-        if not semester:
+        if not self.semester:
             raise ValidationError("Створіть хоча б один семестр в адмінці.")
 
-        subject_name = str(row.get("Subject", "")).strip()
-        course = Course.objects.filter(name__iexact=subject_name).first()
+        def get_clean_str(field_name):
+            val = row.get(field_name)
+            return str(val).strip() if val is not None else ""
+
+        day_val = get_clean_str("Day")
+        subject_name = get_clean_str("Subject")
+        raw_teacher = get_clean_str("Teacher Name")
+        raw_group = get_clean_str("Group Name")
+        raw_room = get_clean_str("Auditorium")
+        raw_slot = get_clean_str("Time Slot")
+
+        if not any([day_val, subject_name, raw_teacher, raw_group, raw_room, raw_slot]):
+            return
+
+        course = self.courses_cache.get(subject_name.lower())
         if not course:
             raise ValidationError(f"Предмет '{subject_name}' не знайдено.")
 
-        raw_teacher = str(row.get("Teacher Name", "")).strip()
-        teacher = None
-        for user in CustomUser.objects.filter(role="TEACHER"):
-            if user.last_name in raw_teacher:
-                teacher = user
-                break
+        teacher_surname = raw_teacher.split()[0].lower() if raw_teacher else ""
+        teacher = self.teachers_cache.get(teacher_surname)
         if not teacher:
             raise ValidationError(f"Викладача '{raw_teacher}' не знайдено.")
 
-        raw_group = str(row.get("Group Name", "")).strip()
-        group = Group.objects.filter(name__iexact=raw_group).first()
+        group = self.groups_cache.get(raw_group.lower())
         if not group:
             raise ValidationError(f"Групу '{raw_group}' не знайдено.")
 
-        raw_room = str(row.get("Auditorium", "")).strip()
-        room = Room.objects.filter(number__iexact=raw_room).first()
+        room = self.rooms_cache.get(raw_room.lower())
         if not room:
             raise ValidationError(f"Аудиторію '{raw_room}' не знайдено.")
 
-        raw_slot = str(row.get("Time Slot", ""))
-        slot_number = "".join(filter(str.isdigit, raw_slot))
-        time_slot = TimeSlot.objects.filter(
-            number=int(slot_number) if slot_number else 0
-        ).first()
+        slot_number_str = "".join(filter(str.isdigit, raw_slot))
+        try:
+            slot_number = int(slot_number_str) if slot_number_str else 0
+        except ValueError:
+            raise ValidationError(f"Невірний формат часового слоту '{raw_slot}'.")
+
+        time_slot = self.time_slots_cache.get(slot_number)
         if not time_slot:
             raise ValidationError(f"Часовий слот '{raw_slot}' не знайдено.")
 
+        day_key = day_val.lower()
+        room_conflict = (day_key, time_slot.id, f"room_{room.id}")
+        group_conflict = (day_key, time_slot.id, f"group_{group.id}")
+        teacher_conflict = (day_key, time_slot.id, f"teacher_{teacher.id}")
+
+        if room_conflict in self.booked_slots:
+            raise ValidationError(f"Конфлікт: Аудиторія '{raw_room}' вже зайнята на {day_val}, слот '{raw_slot}'.")
+        if group_conflict in self.booked_slots:
+            raise ValidationError(f"Конфлікт: Група '{raw_group}' вже має заняття на {day_val}, слот '{raw_slot}'.")
+        if teacher_conflict in self.booked_slots:
+            raise ValidationError(
+                f"Конфлікт: Викладач '{raw_teacher}' вже має заняття на {day_val}, слот '{raw_slot}'.")
+
+        self.booked_slots.add(room_conflict)
+        self.booked_slots.add(group_conflict)
+        self.booked_slots.add(teacher_conflict)
+
         course_offering, _ = CourseOffering.objects.get_or_create(
-            course=course, teacher=teacher, semester=semester, group=group
+            course=course, teacher=teacher, semester=self.semester, group=group
         )
 
         row["_course_offering_id"] = course_offering.id
