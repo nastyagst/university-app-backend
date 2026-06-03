@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import serializers
 from users.models import CustomUser, OTPCode
 
@@ -14,10 +15,6 @@ class OTPRequestSerializer(serializers.Serializer):
 
 
 class OTPVerifySerializer(serializers.Serializer):
-    """
-    Accepts email and a 6-digit code entered by the user.
-    """
-
     email = serializers.EmailField()
     code = serializers.CharField(max_length=6)
 
@@ -30,32 +27,37 @@ class OTPVerifySerializer(serializers.Serializer):
         except CustomUser.DoesNotExist:
             raise serializers.ValidationError("User not found.")
 
-        otp_entry = OTPCode.objects.filter(user=user, is_used=False).last()
-
-        if not otp_entry:
-            raise serializers.ValidationError("No active verification code found.")
-
-        if otp_entry.attempts >= 5:
-            otp_entry.is_used = True
-            otp_entry.save()
-            raise serializers.ValidationError(
-                "Too many wrong attempts. Please request a new code."
+        with transaction.atomic():
+            otp_entry = (
+                OTPCode.objects.select_for_update()
+                .filter(user=user, is_used=False)
+                .last()
             )
 
-        if otp_entry.code != code:
-            otp_entry.attempts += 1
-            otp_entry.save()
-            remaining = 5 - otp_entry.attempts
-            raise serializers.ValidationError(
-                f"Invalid code. {remaining} attempts remaining."
-            )
+            if not otp_entry:
+                raise serializers.ValidationError("No active verification code found.")
 
-        if otp_entry.is_expired():
-            otp_entry.is_used = True
-            otp_entry.save()
-            raise serializers.ValidationError(
-                "Code has expired. Please request a new one."
-            )
+            if otp_entry.attempts >= 5:
+                otp_entry.is_used = True
+                otp_entry.save()
+                raise serializers.ValidationError(
+                    "Too many wrong attempts. Please request a new code."
+                )
+
+            if otp_entry.code != code:
+                otp_entry.attempts += 1
+                otp_entry.save()
+                remaining = 5 - otp_entry.attempts
+                raise serializers.ValidationError(
+                    f"Invalid code. {remaining} attempts remaining."
+                )
+
+            if otp_entry.is_expired():
+                otp_entry.is_used = True
+                otp_entry.save()
+                raise serializers.ValidationError(
+                    "Code has expired. Please request a new one."
+                )
 
         data["user"] = user
         data["otp_entry"] = otp_entry
@@ -102,10 +104,6 @@ class UserShortSerializer(serializers.ModelSerializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
-    """
-    Detailed profile serializer tailored to the user's role (Student/Teacher/Admin).
-    """
-
     group_name = serializers.CharField(source="group.name", read_only=True)
     department_name = serializers.CharField(source="department.name", read_only=True)
     classmates = serializers.SerializerMethodField()
@@ -125,9 +123,12 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "department_name",
             "classmates",
         ]
+
         read_only_fields = [
             "id",
             "email",
+            "first_name",
+            "last_name",
             "role",
             "record_book_number",
             "is_password_changed",
