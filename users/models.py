@@ -29,9 +29,7 @@ class CustomUserManager(BaseUserManager):
 
 
 class Group(models.Model):
-    """
-    Academic groups
-    """
+    """Academic groups"""
 
     name = models.CharField(max_length=50, unique=True)
 
@@ -40,9 +38,7 @@ class Group(models.Model):
 
 
 class Department(models.Model):
-    """
-    University departments/faculties
-    """
+    """University departments/faculties"""
 
     name = models.CharField(max_length=255, unique=True)
 
@@ -51,9 +47,7 @@ class Department(models.Model):
 
 
 class Course(models.Model):
-    """
-    Subjects/Courses taught at the university
-    """
+    """Subjects/Courses taught at the university"""
 
     name = models.CharField(max_length=255, unique=True)
 
@@ -62,9 +56,7 @@ class Course(models.Model):
 
 
 class CustomUser(AbstractUser):
-    """
-    Main user table (Students, Teachers, Admins)
-    """
+    """Main user table (Students, Teachers, Admins)"""
 
     class Role(models.TextChoices):
         ADMIN = "ADMIN", "Admin"
@@ -108,9 +100,7 @@ class CustomUser(AbstractUser):
 
 
 class OTPCode(models.Model):
-    """
-    Table for saving one-time codes (generation at first login or reset password).
-    """
+    """Table for saving one-time codes."""
 
     user = models.ForeignKey(
         CustomUser, on_delete=models.CASCADE, related_name="otp_codes"
@@ -128,3 +118,92 @@ class OTPCode(models.Model):
 
     def __str__(self):
         return f"Code for {self.user.email} - {self.purpose}"
+
+
+class Semester(models.Model):
+    number = models.PositiveSmallIntegerField(help_text="Номер семестру (1 або 2)")
+    year = models.CharField(max_length=9)
+    date_start = models.DateField(null=True, blank=True)
+    date_end = models.DateField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ("year", "number")
+        verbose_name = "Semester"
+        verbose_name_plural = "Semesters"
+
+    def __str__(self):
+        return f"{self.year} — Семестр {self.number}"
+
+
+class Room(models.Model):
+    building = models.CharField(max_length=50)
+    number = models.CharField(max_length=20, help_text="Номер аудиторії")
+    type = models.CharField(max_length=50, blank=True)
+
+    class Meta:
+        unique_together = ("building", "number")
+        verbose_name = "Room"
+        verbose_name_plural = "Rooms"
+
+    def __str__(self):
+        return f"Корп. {self.building}, ауд. {self.number}"
+
+
+class TimeSlot(models.Model):
+    number = models.PositiveSmallIntegerField(unique=True)
+    time_start = models.TimeField()
+    time_end = models.TimeField()
+
+    class Meta:
+        ordering = ["number"]
+        verbose_name = "Time Slot"
+        verbose_name_plural = "Time Slots"
+
+    def __str__(self):
+        return f"Пара {self.number} ({self.time_start.strftime('%H:%M')} - {self.time_end.strftime('%H:%M')})"
+
+
+class CourseOffering(models.Model):
+    course = models.ForeignKey(
+        Course, on_delete=models.CASCADE, related_name="offerings"
+    )
+    teacher = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        limit_choices_to={"role": "TEACHER"},
+        related_name="course_offerings",
+    )
+    semester = models.ForeignKey(
+        Semester, on_delete=models.CASCADE, related_name="course_offerings"
+    )
+    group = models.ForeignKey(
+        Group, on_delete=models.CASCADE, related_name="course_offerings"
+    )
+
+    class Meta:
+        unique_together = ("course", "teacher", "semester", "group")
+        verbose_name = "Course Offering"
+        verbose_name_plural = "Course Offerings"
+
+    def __str__(self):
+        return f"{self.course.name} | {self.teacher.last_name} | {self.group.name}"
+
+
+class ScheduleEntry(models.Model):
+    course_offering = models.ForeignKey(
+        CourseOffering, on_delete=models.CASCADE, related_name="schedule_entries"
+    )
+    room = models.ForeignKey(
+        Room, on_delete=models.CASCADE, related_name="schedule_entries"
+    )
+    time_slot = models.ForeignKey(
+        TimeSlot, on_delete=models.CASCADE, related_name="schedule_entries"
+    )
+    day_of_week = models.CharField(max_length=20, verbose_name="Day of week")
+
+    class Meta:
+        verbose_name = "Schedule Entry"
+        verbose_name_plural = "Schedule Entries"
+
+    def __str__(self):
+        return f"{self.day_of_week} | {self.time_slot} | {self.course_offering.group.name} | {self.room}"
