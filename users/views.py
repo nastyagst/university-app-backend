@@ -3,6 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.throttling import AnonRateThrottle
 from .serializers import (
     OTPRequestSerializer,
     OTPVerifySerializer,
@@ -13,10 +14,16 @@ from .models import CustomUser
 from .services import generate_and_send_otp
 
 
+class OTPRequestThrottle(AnonRateThrottle):
+    rate = "3/min"
+
+
 class OTPRequestView(APIView):
     """
     POST /api/auth/request-otp/
     """
+
+    throttle_classes = [OTPRequestThrottle]
 
     def post(self, request):
         serializer = OTPRequestSerializer(data=request.data)
@@ -81,7 +88,7 @@ class FirstLoginView(APIView):
                 {"detail": "Profile data has already been set during the first login."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        serializer = FirstLoginSerializer(user, data=request.data, partial=True)
+        serializer = FirstLoginSerializer(user, data=request.data)
         if serializer.is_valid():
             serializer.save()
             return Response(
