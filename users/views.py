@@ -1,16 +1,19 @@
+import django_filters
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework_simplejwt.tokens import RefreshToken
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.throttling import AnonRateThrottle
 from .serializers import (
     OTPRequestSerializer,
     OTPVerifySerializer,
     FirstLoginSerializer,
     UserProfileSerializer,
+    ScheduleEntrySerializer,
 )
-from .models import CustomUser
+from .models import CustomUser, ScheduleEntry
 from .services import generate_and_send_otp
 
 
@@ -121,3 +124,39 @@ class UserProfileView(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ScheduleFilter(django_filters.FilterSet):
+    group_id = django_filters.NumberFilter(field_name="course_offering__group_id")
+    teacher_id = django_filters.NumberFilter(field_name="course_offering__teacher_id")
+    day_of_week = django_filters.CharFilter(
+        field_name="day_of_week", lookup_expr="iexact"
+    )
+
+    class Meta:
+        model = ScheduleEntry
+        fields = ["group_id", "teacher_id", "day_of_week"]
+
+
+class ScheduleViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    GET /schedule/ - Retrieve a list of all schedule entries.
+    Supports query parameters for filtering:
+    - ?group_id={id} : Filter by student group
+    - ?teacher_id={id} : Filter by teacher
+    - ?day_of_week={day} : Filter by specific day (e.g., Monday)
+    GET /schedule/{id}/ - Retrieve details of a specific schedule entry by its ID.
+    """
+
+    serializer_class = ScheduleEntrySerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = ScheduleFilter
+
+    def get_queryset(self):
+        return ScheduleEntry.objects.select_related(
+            "course_offering__course",
+            "course_offering__teacher",
+            "course_offering__group",
+            "room",
+            "time_slot",
+        ).all()

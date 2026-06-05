@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'import_export',
     'drf_yasg',
+    'django_filters',
     'users'
 ]
 AUTH_USER_MODEL = 'users.CustomUser'

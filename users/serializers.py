@@ -1,6 +1,6 @@
 from django.db import transaction
 from rest_framework import serializers
-from users.models import CustomUser, OTPCode
+from users.models import CustomUser, OTPCode, ScheduleEntry
 
 
 class OTPRequestSerializer(serializers.Serializer):
@@ -141,3 +141,35 @@ class UserProfileSerializer(serializers.ModelSerializer):
             )
             return UserShortSerializer(classmates_queryset, many=True).data
         return []
+
+
+class ScheduleEntrySerializer(serializers.ModelSerializer):
+    """
+    Serializer for Read-Only Schedule API.
+    """
+
+    subject = serializers.CharField(
+        source="course_offering.course.name", read_only=True
+    )
+    teacher_first_name = serializers.CharField(
+        source="course_offering.teacher.first_name", read_only=True
+    )
+    teacher_last_name = serializers.CharField(
+        source="course_offering.teacher.last_name", read_only=True
+    )
+    group = serializers.CharField(source="course_offering.group.name", read_only=True)
+    time_slot = serializers.CharField(source="time_slot.__str__", read_only=True)
+    auditorium = serializers.CharField(source="room.__str__", read_only=True)
+
+    class Meta:
+        model = ScheduleEntry
+        fields = [
+            "id",
+            "day_of_week",
+            "time_slot",
+            "subject",
+            "teacher_first_name",
+            "teacher_last_name",
+            "group",
+            "auditorium",
+        ]
