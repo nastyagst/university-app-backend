@@ -6,10 +6,18 @@ from .views import (
     FirstLoginView,
     UserProfileView,
     ScheduleViewSet,
+    LessonViewSet,
+    AttendanceViewSet,
+    GradeViewSet,
+    ABTestViewSet,
 )
 
 router = DefaultRouter()
 router.register(r"schedule", ScheduleViewSet, basename="schedule")
+router.register(r"lessons", LessonViewSet, basename="lesson")
+router.register(r"attendance", AttendanceViewSet, basename="attendance")
+router.register(r"grades", GradeViewSet, basename="grade")
+router.register(r"ab-tests", ABTestViewSet, basename="abtest")
 
 urlpatterns = [
     path("auth/request-otp/", OTPRequestView.as_view(), name="request_otp"),

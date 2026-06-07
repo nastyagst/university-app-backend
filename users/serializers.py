@@ -1,6 +1,14 @@
 from django.db import transaction
 from rest_framework import serializers
-from users.models import CustomUser, OTPCode, ScheduleEntry
+from users.models import (
+    CustomUser,
+    OTPCode,
+    ScheduleEntry,
+    Lesson,
+    Attendance,
+    Grade,
+    ABTest,
+)
 
 
 class OTPRequestSerializer(serializers.Serializer):
@@ -173,3 +181,49 @@ class ScheduleEntrySerializer(serializers.ModelSerializer):
             "group",
             "auditorium",
         ]
+
+
+class LessonSerializer(serializers.ModelSerializer):
+    course_name = serializers.CharField(
+        source="course_offering.course.name", read_only=True
+    )
+    group_name = serializers.CharField(
+        source="course_offering.group.name", read_only=True
+    )
+    time_slot_str = serializers.CharField(source="time_slot.__str__", read_only=True)
+
+    class Meta:
+        model = Lesson
+        fields = [
+            "id",
+            "course_offering",
+            "course_name",
+            "group_name",
+            "date",
+            "time_slot",
+            "time_slot_str",
+            "room",
+            "topic",
+        ]
+
+
+class AttendanceSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source="student.last_name", read_only=True)
+
+    class Meta:
+        model = Attendance
+        fields = ["id", "lesson", "student", "student_name", "status"]
+
+
+class GradeSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source="student.last_name", read_only=True)
+
+    class Meta:
+        model = Grade
+        fields = ["id", "lesson", "student", "student_name", "score", "comment"]
+
+
+class ABTestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ABTest
+        fields = ["id", "user", "test_name", "group"]
