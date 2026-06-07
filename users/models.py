@@ -207,3 +207,89 @@ class ScheduleEntry(models.Model):
 
     def __str__(self):
         return f"{self.day_of_week} | {self.time_slot} | {self.course_offering.group.name} | {self.room}"
+
+
+class Lesson(models.Model):
+    course_offering = models.ForeignKey(
+        CourseOffering, on_delete=models.CASCADE, related_name="lessons"
+    )
+    date = models.DateField()
+    time_slot = models.ForeignKey(
+        TimeSlot, on_delete=models.SET_NULL, null=True, related_name="lessons"
+    )
+    room = models.ForeignKey(Room, on_delete=models.SET_NULL, null=True, blank=True)
+    topic = models.CharField(
+        max_length=255, blank=True, null=True, help_text="Тема заняття"
+    )
+
+    class Meta:
+        ordering = ["-date", "time_slot"]
+        verbose_name = "Lesson"
+        verbose_name_plural = "Lessons"
+
+    def __str__(self):
+        return f"{self.course_offering.course.name} | {self.date}"
+
+
+class Attendance(models.Model):
+    class Status(models.TextChoices):
+        PRESENT = "PRESENT", "Присутній"
+        ABSENT = "ABSENT", "Відсутній"
+        LATE = "LATE", "Запізнився"
+
+    lesson = models.ForeignKey(
+        Lesson, on_delete=models.CASCADE, related_name="attendances"
+    )
+    student = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        limit_choices_to={"role": "STUDENT"},
+        related_name="attendances",
+    )
+    status = models.CharField(
+        max_length=10, choices=Status.choices, default=Status.PRESENT
+    )
+
+    class Meta:
+        unique_together = ("lesson", "student")
+        verbose_name = "Attendance"
+        verbose_name_plural = "Attendance Records"
+
+    def __str__(self):
+        return f"{self.student.last_name} - {self.lesson} ({self.status})"
+
+
+class Grade(models.Model):
+    lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name="grades")
+    student = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        limit_choices_to={"role": "STUDENT"},
+        related_name="grades",
+    )
+    score = models.PositiveSmallIntegerField()
+    comment = models.TextField(blank=True, null=True)
+
+    class Meta:
+        unique_together = ("lesson", "student")
+        verbose_name = "Grade"
+        verbose_name_plural = "Grades"
+
+    def __str__(self):
+        return f"{self.student.last_name} - {self.lesson}: {self.score}"
+
+
+class ABTest(models.Model):
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name="ab_tests"
+    )
+    test_name = models.CharField(max_length=100)
+    group = models.CharField(max_length=50)
+
+    class Meta:
+        unique_together = ("user", "test_name")
+        verbose_name = "A/B Test Record"
+        verbose_name_plural = "A/B Test Records"
+
+    def __str__(self):
+        return f"{self.user.email} | {self.test_name}: Group {self.group}"

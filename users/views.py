@@ -12,8 +12,12 @@ from .serializers import (
     FirstLoginSerializer,
     UserProfileSerializer,
     ScheduleEntrySerializer,
+    LessonSerializer,
+    AttendanceSerializer,
+    GradeSerializer,
+    ABTestSerializer,
 )
-from .models import CustomUser, ScheduleEntry
+from .models import CustomUser, ScheduleEntry, Lesson, Attendance, Grade, ABTest
 from .services import generate_and_send_otp
 
 
@@ -160,3 +164,61 @@ class ScheduleViewSet(viewsets.ReadOnlyModelViewSet):
             "room",
             "time_slot",
         ).all()
+
+
+class LessonViewSet(viewsets.ModelViewSet):
+    """
+    GET /lessons/ - Retrieve a list of all lessons.
+    POST /lessons/ - Create a new lesson.
+    Supports filtering by:
+    - ?course_offering__group_id={id} : Filter by group
+    - ?date={YYYY-MM-DD} : Filter by specific date
+    """
+
+    queryset = Lesson.objects.select_related(
+        "course_offering__course", "course_offering__group", "time_slot", "room"
+    ).all()
+    serializer_class = LessonSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["course_offering__group_id", "date"]
+
+
+class AttendanceViewSet(viewsets.ModelViewSet):
+    """
+    GET /attendance/ - Retrieve attendance records.
+    POST /attendance/ - Mark student attendance.
+    Supports filtering by:
+    - ?lesson_id={id} : Filter by specific lesson
+    - ?student_id={id} : Filter by student
+    """
+
+    queryset = Attendance.objects.select_related("lesson", "student").all()
+    serializer_class = AttendanceSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["lesson", "student", "status"]
+
+
+class GradeViewSet(viewsets.ModelViewSet):
+    """
+    GET /grades/ - Retrieve student grades.
+    POST /grades/ - Add a new grade.
+    Supports filtering by:
+    - ?lesson_id={id} : Filter by specific lesson
+    - ?student_id={id} : Filter by student
+    """
+
+    queryset = Grade.objects.select_related("lesson", "student").all()
+    serializer_class = GradeSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["lesson", "student"]
+
+
+class ABTestViewSet(viewsets.ModelViewSet):
+    """
+    GET /ab-tests/ - Retrieve A/B test analytics data.
+    """
+
+    queryset = ABTest.objects.all()
+    serializer_class = ABTestSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["test_name", "group"]
