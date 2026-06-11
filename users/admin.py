@@ -14,6 +14,10 @@ from .models import (
     Room,
     TimeSlot,
     CourseOffering,
+    Lesson,
+    Attendance,
+    Grade,
+    ABTest,
 )
 
 
@@ -82,16 +86,36 @@ class ScheduleResource(resources.ModelResource):
     class Meta:
         model = ScheduleEntry
         fields = (
-            "id", "day", "time_slot_name", "subject", "teacher_name",
-            "group_name", "auditorium", "course_offering_id", "room_id", "time_slot_id"
+            "id",
+            "day",
+            "time_slot_name",
+            "subject",
+            "teacher_name",
+            "group_name",
+            "auditorium",
+            "course_offering_id",
+            "room_id",
+            "time_slot_id",
         )
         export_order = (
-            "day", "time_slot_name", "subject", "teacher_name", "group_name", "auditorium"
+            "day",
+            "time_slot_name",
+            "subject",
+            "teacher_name",
+            "group_name",
+            "auditorium",
         )
         use_bulk = False
 
     def skip_row(self, instance, original, row, import_validation_errors=None):
-        required_fields = ["Day", "Time Slot", "Subject", "Teacher Name", "Group Name", "Auditorium"]
+        required_fields = [
+            "Day",
+            "Time Slot",
+            "Subject",
+            "Teacher Name",
+            "Group Name",
+            "Auditorium",
+        ]
         if not any(row.get(field) for field in required_fields):
             return True
         return super().skip_row(instance, original, row, import_validation_errors)
@@ -168,12 +192,17 @@ class ScheduleResource(resources.ModelResource):
         teacher_conflict = (day_key, time_slot.id, f"teacher_{teacher.id}")
 
         if room_conflict in self.booked_slots:
-            raise ValidationError(f"Конфлікт: Аудиторія '{raw_room}' вже зайнята на {day_val}, слот '{raw_slot}'.")
+            raise ValidationError(
+                f"Конфлікт: Аудиторія '{raw_room}' вже зайнята на {day_val}, слот '{raw_slot}'."
+            )
         if group_conflict in self.booked_slots:
-            raise ValidationError(f"Конфлікт: Група '{raw_group}' вже має заняття на {day_val}, слот '{raw_slot}'.")
+            raise ValidationError(
+                f"Конфлікт: Група '{raw_group}' вже має заняття на {day_val}, слот '{raw_slot}'."
+            )
         if teacher_conflict in self.booked_slots:
             raise ValidationError(
-                f"Конфлікт: Викладач '{raw_teacher}' вже має заняття на {day_val}, слот '{raw_slot}'.")
+                f"Конфлікт: Викладач '{raw_teacher}' вже має заняття на {day_val}, слот '{raw_slot}'."
+            )
 
         self.booked_slots.add(room_conflict)
         self.booked_slots.add(group_conflict)
@@ -224,6 +253,33 @@ class ScheduleEntryAdmin(ImportExportModelAdmin):
             return "-"
 
     get_group.short_description = "Group Name"
+
+
+@admin.register(Lesson)
+class LessonAdmin(admin.ModelAdmin):
+    list_display = ("course_offering", "date", "time_slot", "room")
+    list_filter = ("date",)
+    search_fields = ("topic",)
+
+
+@admin.register(Attendance)
+class AttendanceAdmin(admin.ModelAdmin):
+    list_display = ("student", "lesson", "status")
+    list_filter = ("status", "lesson__date")
+    search_fields = ("student__last_name", "student__first_name")
+
+
+@admin.register(Grade)
+class GradeAdmin(admin.ModelAdmin):
+    list_display = ("student", "lesson", "score")
+    list_filter = ("lesson__date",)
+    search_fields = ("student__last_name", "student__first_name")
+
+
+@admin.register(ABTest)
+class ABTestAdmin(admin.ModelAdmin):
+    list_display = ("user", "test_name", "group")
+    list_filter = ("test_name", "group")
 
 
 admin.site.register(Group)
