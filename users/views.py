@@ -6,6 +6,7 @@ from rest_framework import status, viewsets
 from rest_framework_simplejwt.tokens import RefreshToken
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.throttling import AnonRateThrottle
+from .permissions import IsTeacherOrAdminOrReadOnlyForStudent
 from .serializers import (
     OTPRequestSerializer,
     OTPVerifySerializer,
@@ -196,6 +197,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
     serializer_class = AttendanceSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["lesson", "student", "status"]
+    permission_classes = [IsAuthenticated, IsTeacherOrAdminOrReadOnlyForStudent]
 
 
 class GradeViewSet(viewsets.ModelViewSet):
@@ -211,6 +213,7 @@ class GradeViewSet(viewsets.ModelViewSet):
     serializer_class = GradeSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["lesson", "student"]
+    permission_classes = [IsAuthenticated, IsTeacherOrAdminOrReadOnlyForStudent]
 
 
 class ABTestViewSet(viewsets.ModelViewSet):
