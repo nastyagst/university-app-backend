@@ -1,0 +1,234 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "colab": {
+      "provenance": [],
+      "authorship_tag": "ABX9TyNDdSTwCWassWxLjKco5cZi",
+      "include_colab_link": true
+    },
+    "kernelspec": {
+      "name": "python3",
+      "display_name": "Python 3"
+    },
+    "language_info": {
+      "name": "python"
+    }
+  },
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "view-in-github",
+        "colab_type": "text"
+      },
+      "source": [
+        "<a href=\"https://colab.research.google.com/github/nastyagst/university-app-backend/blob/feature%2Feda-analysis/Baseline%20Conversions\" target=\"_parent\"><img src=\"https://colab.research.google.com/assets/colab-badge.svg\" alt=\"Open In Colab\"/></a>"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "metadata": {
+        "id": "S0qLg0rZHpJz"
+      },
+      "outputs": [],
+      "source": [
+        "!pip install scipy statsmodels openpyxl --quiet\n",
+        "import pandas as pd\n",
+        "import numpy as np\n",
+        "from scipy import stats\n",
+        "from statsmodels.stats.proportion import proportions_ztest, proportion_confint\n",
+        "from google.colab import drive, files\n",
+        "import warnings\n",
+        "warnings.filterwarnings(\"ignore\")"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "drive.mount(\"/content/drive\")\n",
+        "import zipfile\n",
+        "zip_path = \"/content/drive/MyDrive/university_schema.zip\"\n",
+        "extract_path = \"/content/university_schema\"\n",
+        "with zipfile.ZipFile(zip_path, \"r\") as z:\n",
+        "    z.extractall(extract_path)\n",
+        "path = extract_path\n",
+        "users = pd.read_csv(f\"{path}/users.csv\")\n",
+        "groups = pd.read_csv(f\"{path}/groups.csv\")\n",
+        "courses = pd.read_csv(f\"{path}/courses.csv\")\n",
+        "semesters = pd.read_csv(f\"{path}/semesters.csv\")\n",
+        "teachers = pd.read_csv(f\"{path}/teachers.csv\")\n",
+        "students = pd.read_csv(f\"{path}/students.csv\")\n",
+        "rooms = pd.read_csv(f\"{path}/rooms.csv\")\n",
+        "time_slot = pd.read_csv(f\"{path}/time_slot.csv\")\n",
+        "course_offerings = pd.read_csv(f\"{path}/course_offerings.csv\")\n",
+        "lessons = pd.read_csv(f\"{path}/lessons.csv\")\n",
+        "grades = pd.read_csv(f\"{path}/grades.csv\")\n",
+        "schedule_entries = pd.read_csv(f\"{path}/schedule_entries.csv\")\n",
+        "ab_tests = pd.read_csv(f\"{path}/ab_tests.csv\")"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "7-GLaCiTH2OX",
+        "outputId": "7e15e1ca-49d8-42eb-b9a0-656a4702e8ea"
+      },
+      "execution_count": null,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Mounted at /content/drive\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "current_semester = course_offerings[\"semester_id\"].max()\n",
+        "co=course_offerings[course_offerings[\"semester_id\"] == current_semester]\n"
+      ],
+      "metadata": {
+        "id": "yS1PtiTdJOPA"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "# Базова конверсія для Тесту 1"
+      ],
+      "metadata": {
+        "id": "e4adqvf6LRBL"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "student_counts = co.groupby(\"course_offering_id\").size()\n",
+        "successful_students = (student_counts > 3).sum()\n",
+        "total_students = len(student_counts)\n",
+        "baseline_conversion_1 = (successful_students / total_students) * 100\n",
+        "print(f\"Baseline Conversion (Test 1): {baseline_conversion_1}\")"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "ucP8shTQJZTG",
+        "outputId": "809cbc08-29da-48fc-80ab-922f55929df7"
+      },
+      "execution_count": null,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Baseline Conversion (Test 1): 0.0\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "# Базова конверсія для Тесту 2\n"
+      ],
+      "metadata": {
+        "id": "sMaajlVsLZ94"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "avg_grade_per_student = grades.groupby(\"student_id\")[\"value\"].mean()\n",
+        "baseline_conversion_2 = avg_grade_per_student.mean()\n",
+        "print(f\"Baseline conversion (Test2): {baseline_conversion_2}\")"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "nYnZY7NuJutz",
+        "outputId": "1ba86c32-060b-4309-c85b-6c779b40047c"
+      },
+      "execution_count": null,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Baseline conversion (Test2): 74.94853585155194\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "source": [
+        "# Базова конверсія для Тесту 3\n"
+      ],
+      "metadata": {
+        "id": "2TnzJeLuLdGK"
+      }
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "offerings_per_teacher = co.groupby(\"teacher_id\").size()\n",
+        "baseline_conversion_3 = offerings_per_teacher.mean()\n",
+        "print(f\"Baseline conversion (Test3): {baseline_conversion_3:}\")"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "xRqviw61KlTT",
+        "outputId": "a52a0540-2e80-4484-9d3a-28e5cd40f7a4"
+      },
+      "execution_count": null,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Baseline conversion (Test3): 5.666666666666667\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "import pandas as pd\n",
+        "semesters[\"date_start\"]=pd.to_datetime(semesters[\"date_start\"])\n",
+        "semesters[\"date_end\"] = pd.to_datetime(semesters[\"date_end\"])\n",
+        "semesters[\"duration_days\"] = (semesters[\"date_end\"] - semesters[\"date_start\"]).dt.days=\n",
+        "mean_semester_duration = semesters[\"duration_days\"].mean()\n",
+        "print(f\"Середня тривалість семестру: {mean_semester_duration} днів\")"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "X6Jw2ZNIS_AB",
+        "outputId": "e2b81f82-f626-4a22-9c36-dd34056194d4"
+      },
+      "execution_count": null,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Середня тривалість семестру: 150.66666666666666 днів\n"
+          ]
+        }
+      ]
+    }
+  ]
+}
