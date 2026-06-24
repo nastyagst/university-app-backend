@@ -3,6 +3,8 @@ from django.core.exceptions import ValidationError
 from import_export import resources, fields
 from import_export.admin import ImportExportModelAdmin
 from import_export.widgets import ForeignKeyWidget
+
+from .resources import GradeResource
 from .models import (
     CustomUser,
     Group,
@@ -18,6 +20,8 @@ from .models import (
     Attendance,
     Grade,
     ABTest,
+    StudentProfile,
+    TeacherProfile,
 )
 
 
@@ -255,22 +259,40 @@ class ScheduleEntryAdmin(ImportExportModelAdmin):
     get_group.short_description = "Group Name"
 
 
+class LessonResource(resources.ModelResource):
+    id = fields.Field(column_name="lesson_id", attribute="id")
+
+    course_offering = fields.Field(
+        column_name="course_offering_id",
+        attribute="course_offering",
+        widget=ForeignKeyWidget(CourseOffering, "id"),
+    )
+
+    class Meta:
+        model = Lesson
+        fields = ("id", "course_offering", "date", "topic", "type")
+        import_id_fields = ("id",)
+        use_transactions = True
+
+
 @admin.register(Lesson)
-class LessonAdmin(admin.ModelAdmin):
+class LessonAdmin(ImportExportModelAdmin):
+    resource_classes = [LessonResource]
     list_display = ("course_offering", "date", "time_slot", "room")
     list_filter = ("date",)
     search_fields = ("topic",)
 
 
 @admin.register(Attendance)
-class AttendanceAdmin(admin.ModelAdmin):
+class AttendanceAdmin(ImportExportModelAdmin):
     list_display = ("student", "lesson", "status")
     list_filter = ("status", "lesson__date")
     search_fields = ("student__last_name", "student__first_name")
 
 
 @admin.register(Grade)
-class GradeAdmin(admin.ModelAdmin):
+class GradeAdmin(ImportExportModelAdmin):
+    resource_classes = [GradeResource]
     list_display = ("student", "lesson", "score")
     list_filter = ("lesson__date",)
     search_fields = ("student__last_name", "student__first_name")
@@ -282,11 +304,91 @@ class ABTestAdmin(admin.ModelAdmin):
     list_filter = ("test_name", "group")
 
 
-admin.site.register(Group)
-admin.site.register(Department)
-admin.site.register(Course)
-admin.site.register(OTPCode)
-admin.site.register(Semester)
-admin.site.register(Room)
-admin.site.register(TimeSlot)
-admin.site.register(CourseOffering)
+@admin.register(StudentProfile)
+class StudentProfileAdmin(admin.ModelAdmin):
+    list_display = ("user", "enrollment_year", "faculty", "degree_level")
+    search_fields = ("user__email", "user__last_name", "user__first_name")
+    list_filter = ("faculty", "degree_level")
+
+
+@admin.register(TeacherProfile)
+class TeacherProfileAdmin(admin.ModelAdmin):
+    list_display = ("user", "position", "office_room")
+    search_fields = ("user__email", "user__last_name", "user__first_name")
+    list_filter = ("position",)
+
+
+@admin.register(Group)
+class GroupAdmin(ImportExportModelAdmin):
+    list_display = ("id", "name")
+    search_fields = ("name",)
+
+
+@admin.register(Department)
+class DepartmentAdmin(ImportExportModelAdmin):
+    list_display = ("id", "name")
+    search_fields = ("name",)
+
+
+@admin.register(Course)
+class CourseAdmin(ImportExportModelAdmin):
+    list_display = ("id", "name")
+    search_fields = ("name",)
+
+
+@admin.register(Semester)
+class SemesterAdmin(ImportExportModelAdmin):
+    list_display = ("id", "number", "year", "date_start", "date_end")
+    list_filter = ("year", "number")
+
+
+@admin.register(Room)
+class RoomAdmin(ImportExportModelAdmin):
+    list_display = ("id", "building", "number", "type")
+    list_filter = ("building", "type")
+    search_fields = ("number",)
+
+
+@admin.register(TimeSlot)
+class TimeSlotAdmin(ImportExportModelAdmin):
+    list_display = ("id", "number", "time_start", "time_end")
+
+
+class CourseOfferingResource(resources.ModelResource):
+    id = fields.Field(column_name="course_offering_id", attribute="id")
+    course = fields.Field(
+        column_name="course_id",
+        attribute="course",
+        widget=ForeignKeyWidget(Course, "id"),
+    )
+    group = fields.Field(
+        column_name="group_id", attribute="group", widget=ForeignKeyWidget(Group, "id")
+    )
+    teacher = fields.Field(
+        column_name="teacher_id",
+        attribute="teacher",
+        widget=ForeignKeyWidget(CustomUser, "id"),
+    )
+    semester = fields.Field(
+        column_name="semester_id",
+        attribute="semester",
+        widget=ForeignKeyWidget(Semester, "id"),
+    )
+
+    class Meta:
+        model = CourseOffering
+        fields = ("id", "course", "group", "teacher", "semester")
+        import_id_fields = ("id",)
+
+
+@admin.register(CourseOffering)
+class CourseOfferingAdmin(ImportExportModelAdmin):
+    resource_classes = [CourseOfferingResource]
+    list_display = ("id", "course", "group", "teacher", "semester")
+    list_filter = ("semester", "course")
+    search_fields = ("course__name", "teacher__last_name", "group__name")
+
+
+@admin.register(OTPCode)
+class OTPCodeAdmin(admin.ModelAdmin):
+    list_display = ("user", "code", "created_at")

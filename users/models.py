@@ -179,6 +179,8 @@ class CourseOffering(models.Model):
     group = models.ForeignKey(
         Group, on_delete=models.CASCADE, related_name="course_offerings"
     )
+    description = models.TextField(blank=True, null=True)
+    telegram_group_url = models.URLField(max_length=255, blank=True, null=True)
 
     class Meta:
         unique_together = ("course", "teacher", "semester", "group")
@@ -221,6 +223,7 @@ class Lesson(models.Model):
     topic = models.CharField(
         max_length=255, blank=True, null=True, help_text="Тема заняття"
     )
+    is_cancelled = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["-date", "time_slot"]
@@ -238,7 +241,11 @@ class Attendance(models.Model):
         LATE = "LATE", "Запізнився"
 
     lesson = models.ForeignKey(
-        Lesson, on_delete=models.CASCADE, related_name="attendances"
+        Lesson,
+        on_delete=models.CASCADE,
+        related_name="attendances",
+        null=True,
+        blank=True,
     )
     student = models.ForeignKey(
         CustomUser,
@@ -293,3 +300,27 @@ class ABTest(models.Model):
 
     def __str__(self):
         return f"{self.user.email} | {self.test_name}: Group {self.group}"
+
+
+class StudentProfile(models.Model):
+    user = models.OneToOneField(
+        CustomUser, on_delete=models.CASCADE, related_name="student_profile"
+    )
+    enrollment_year = models.PositiveIntegerField(null=True, blank=True)
+    faculty = models.CharField(max_length=255, null=True, blank=True)
+    degree_level = models.CharField(
+        max_length=50, null=True, blank=True, help_text="Бакалавр/Магістр"
+    )
+
+    def __str__(self):
+        return f"Student profile: {self.user.last_name}"
+
+
+class TeacherProfile(models.Model):
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE)
+    position = models.CharField(max_length=100, null=True, blank=True)
+    office_room = models.CharField(max_length=50, null=True, blank=True)
+    telegram_url = models.URLField(max_length=255, null=True, blank=True)
+
+    def __str__(self):
+        return f"Teacher profile: {self.user.last_name}"
