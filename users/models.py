@@ -24,7 +24,7 @@ class CustomUserManager(BaseUserManager):
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
         extra_fields.setdefault("is_password_changed", True)
-        extra_fields.setdefault("role", "ADMIN")
+        extra_fields.setdefault("role", "STUDENT")
 
         return self.create_user(email, password, **extra_fields)
 
@@ -60,8 +60,8 @@ class CustomUser(AbstractUser):
     """Main user table (Students, Teachers, Admins)"""
 
     class Role(models.TextChoices):
-        ADMIN = "ADMIN", "Admin"
         STUDENT = "STUDENT", "Student"
+        ADMIN = "ADMIN", "Admin"
         TEACHER = "TEACHER", "Teacher"
 
     username = None
@@ -272,7 +272,6 @@ class Grade(models.Model):
     student = models.ForeignKey(
         CustomUser,
         on_delete=models.CASCADE,
-        limit_choices_to={"role": "STUDENT"},
         related_name="grades",
     )
     score = models.PositiveSmallIntegerField(
