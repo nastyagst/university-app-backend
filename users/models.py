@@ -1,5 +1,6 @@
 from datetime import timedelta
 from django.contrib.auth.models import AbstractUser, BaseUserManager
+from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
 from django.utils import timezone
 
@@ -274,8 +275,27 @@ class Grade(models.Model):
         limit_choices_to={"role": "STUDENT"},
         related_name="grades",
     )
-    score = models.PositiveSmallIntegerField()
+    score = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(0), MaxValueValidator(100)]
+    )
     comment = models.TextField(blank=True, null=True)
+
+    @property
+    def ects_letter(self):
+        if 90 <= self.score <= 100:
+            return "A"
+        elif 82 <= self.score <= 89:
+            return "B"
+        elif 74 <= self.score <= 81:
+            return "C"
+        elif 64 <= self.score <= 73:
+            return "D"
+        elif 60 <= self.score <= 63:
+            return "E"
+        elif 35 <= self.score <= 59:
+            return "FX"
+        else:
+            return "F"
 
     class Meta:
         unique_together = ("lesson", "student")
@@ -283,7 +303,7 @@ class Grade(models.Model):
         verbose_name_plural = "Grades"
 
     def __str__(self):
-        return f"{self.student.last_name} - {self.lesson}: {self.score}"
+        return f"{self.student.last_name} - {self.lesson}: {self.score} ({self.ects_letter})"
 
 
 class ABTest(models.Model):

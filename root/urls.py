@@ -8,7 +8,7 @@ schema_view = get_schema_view(
     openapi.Info(
         title="University API",
         default_version="v1",
-        description="API документація для системи управління університетом.",
+        description="API documentation for the university management system.",
     ),
     public=True,
     permission_classes=(permissions.AllowAny,),
