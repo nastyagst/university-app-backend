@@ -137,6 +137,8 @@ CORS_ALLOW_ALL_ORIGINS = env.bool('CORS_ALLOW_ALL_ORIGINS', default=DEBUG)
 if not CORS_ALLOW_ALL_ORIGINS:
     CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[])
 
+CORS_EXPOSE_HEADERS = ['Content-Disposition']
+
 from datetime import timedelta
 
 # JWT SESSION CONFIGURATION
@@ -162,3 +164,19 @@ EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='stud.portal.auth@gmail.com')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
 
 DEFAULT_FROM_EMAIL = f"Студентський Портал <{EMAIL_HOST_USER}>"
+
+SWAGGER_SETTINGS = {
+    'SECURITY_DEFINITIONS': {
+        'Bearer': {
+            'type': 'apiKey',
+            'name': 'Authorization',
+            'in': 'header',
+            'description': "bearer token:"
+        }
+    },
+    'SECURITY_REQUIREMENTS': [{
+        'Bearer': []
+    }],
+    'USE_SESSION_AUTH': False,
+    'PERSIST_AUTH': True,
+}

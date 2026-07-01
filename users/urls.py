@@ -10,6 +10,8 @@ from .views import (
     AttendanceViewSet,
     GradeViewSet,
     ABTestViewSet,
+    teacher_import_view,
+    teacher_export_view,
 )
 
 router = DefaultRouter()
@@ -25,4 +27,6 @@ urlpatterns = [
     path("auth/profile/first-login/", FirstLoginView.as_view(), name="first_login"),
     path("auth/profile/", UserProfileView.as_view(), name="user_profile"),
     path("", include(router.urls)),
+    path("api/teacher/grades/import/", teacher_import_view, name="import_grades"),
+    path("api/teacher/grades/export/", teacher_export_view, name="export_grades"),
 ]

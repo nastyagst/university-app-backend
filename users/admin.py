@@ -4,7 +4,7 @@ from import_export import resources, fields
 from import_export.admin import ImportExportModelAdmin
 from import_export.widgets import ForeignKeyWidget
 
-from .resources import GradeResource
+from .resources import GradeResource, StudentProfileResource, TeacherProfileResource
 from .models import (
     CustomUser,
     Group,
@@ -305,15 +305,34 @@ class ABTestAdmin(admin.ModelAdmin):
 
 
 @admin.register(StudentProfile)
-class StudentProfileAdmin(admin.ModelAdmin):
-    list_display = ("user", "enrollment_year", "faculty", "degree_level")
+class StudentProfileAdmin(ImportExportModelAdmin):
+    resource_classes = [StudentProfileResource]
+    list_display = (
+        "user",
+        "enrollment_year",
+        "faculty",
+        "degree_level",
+        "get_student_name",
+        "enrollment_year",
+    )
+
+    def get_student_name(self, obj):
+        if hasattr(obj.user, "first_name") and obj.user.first_name:
+            return f"{obj.user.first_name} {obj.user.last_name}"
+        return getattr(obj.user, "email", "Unknown user")
+
     search_fields = ("user__email", "user__last_name", "user__first_name")
     list_filter = ("faculty", "degree_level")
 
 
 @admin.register(TeacherProfile)
-class TeacherProfileAdmin(admin.ModelAdmin):
-    list_display = ("user", "position", "office_room")
+class TeacherProfileAdmin(ImportExportModelAdmin):
+    resource_classes = [TeacherProfileResource]
+    list_display = ("user", "position", "office_room", "get_teacher_name")
+    def get_teacher_name(self, obj):
+        if hasattr(obj.user, "first_name") and obj.user.first_name:
+            return f"{obj.user.first_name} {obj.user.last_name}"
+        return getattr(obj.user, "email", "Unknown user")
     search_fields = ("user__email", "user__last_name", "user__first_name")
     list_filter = ("position",)
 

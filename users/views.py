@@ -1,4 +1,11 @@
+from datetime import datetime
 import django_filters
+import tablib
+from django.http import HttpResponse
+from rest_framework.decorators import api_view, permission_classes, parser_classes
+from rest_framework.parsers import MultiPartParser
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -6,7 +13,9 @@ from rest_framework import status, viewsets
 from rest_framework_simplejwt.tokens import RefreshToken
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.throttling import AnonRateThrottle
+
 from .permissions import IsTeacherOrAdminOrReadOnlyForStudent
+from .resources import GradeResource
 from .serializers import (
     OTPRequestSerializer,
     OTPVerifySerializer,
@@ -77,7 +86,6 @@ class OTPVerifyView(APIView):
                 },
                 status=status.HTTP_200_OK,
             )
-
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -146,11 +154,6 @@ class ScheduleFilter(django_filters.FilterSet):
 class ScheduleViewSet(viewsets.ReadOnlyModelViewSet):
     """
     GET /schedule/ - Retrieve a list of all schedule entries.
-    Supports query parameters for filtering:
-    - ?group_id={id} : Filter by student group
-    - ?teacher_id={id} : Filter by teacher
-    - ?day_of_week={day} : Filter by specific day (e.g., Monday)
-    GET /schedule/{id}/ - Retrieve details of a specific schedule entry by its ID.
     """
 
     serializer_class = ScheduleEntrySerializer
@@ -171,9 +174,6 @@ class LessonViewSet(viewsets.ModelViewSet):
     """
     GET /lessons/ - Retrieve a list of all lessons.
     POST /lessons/ - Create a new lesson.
-    Supports filtering by:
-    - ?course_offering__group_id={id} : Filter by group
-    - ?date={YYYY-MM-DD} : Filter by specific date
     """
 
     queryset = Lesson.objects.select_related(
@@ -188,9 +188,6 @@ class AttendanceViewSet(viewsets.ModelViewSet):
     """
     GET /attendance/ - Retrieve attendance records.
     POST /attendance/ - Mark student attendance.
-    Supports filtering by:
-    - ?lesson_id={id} : Filter by specific lesson
-    - ?student_id={id} : Filter by student
     """
 
     queryset = Attendance.objects.select_related("lesson", "student").all()
@@ -204,9 +201,6 @@ class GradeViewSet(viewsets.ModelViewSet):
     """
     GET /grades/ - Retrieve student grades.
     POST /grades/ - Add a new grade.
-    Supports filtering by:
-    - ?lesson_id={id} : Filter by specific lesson
-    - ?student_id={id} : Filter by student
     """
 
     queryset = Grade.objects.select_related("lesson", "student").all()
@@ -225,3 +219,103 @@ class ABTestViewSet(viewsets.ModelViewSet):
     serializer_class = ABTestSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["test_name", "group"]
+
+
+@swagger_auto_schema(
+    method="post",
+    tags=["Teacher Grades"],
+    operation_description="Import grades. Upload a .csv or .xlsx file.",
+    manual_parameters=[
+        openapi.Parameter(
+            name="excel_file",
+            in_=openapi.IN_FORM,
+            type=openapi.TYPE_FILE,
+            required=True,
+            description="Grades file (CSV/Excel)",
+        )
+    ],
+    responses={
+        200: "Successful import",
+        400: "Data validation failed or invalid file format",
+        403: "Access denied. Teachers only",
+    },
+)
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser])
+def teacher_import_view(request):
+    if request.user.role != "TEACHER" and not request.user.is_superuser:
+        return Response(
+            {"error": "Access is restricted to teachers only."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    if "excel_file" not in request.FILES:
+        return Response(
+            {
+                "error": "No file provided. Please upload a file in the 'excel_file' field."
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    excel_file = request.FILES["excel_file"]
+    dataset = tablib.Dataset()
+
+    try:
+        if excel_file.name.endswith(".xlsx"):
+            dataset.load(excel_file.read(), format="xlsx")
+        else:
+            dataset.load(excel_file.read().decode("utf-8"), format="csv")
+    except Exception as e:
+        return Response(
+            {"error": f"Failed to read the file: {str(e)}"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    grade_resource = GradeResource()
+    result = grade_resource.import_data(dataset, dry_run=True, raise_errors=False)
+
+    if result.has_errors():
+        error_list = [f"Row {r[0]}: {r[1][0].error}" for r in result.row_errors()]
+        return Response(
+            {"error": "Data validation failed", "details": error_list},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    grade_resource.import_data(dataset, dry_run=False)
+
+    return Response(
+        {"message": f"Success! {len(dataset)} grades have been imported."},
+        status=status.HTTP_200_OK,
+    )
+
+
+@swagger_auto_schema(
+    method="get",
+    tags=["Teacher Grades"],
+    operation_description="Export all grades to a CSV file.",
+    responses={200: "CSV file download", 403: "Access denied. Teachers only"},
+)
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def teacher_export_view(request):
+    if request.user.role != "TEACHER" and not request.user.is_superuser:
+        return Response(
+            {"error": "Access is restricted to teachers only."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    grade_resource = GradeResource()
+    queryset = Grade.objects.select_related("student", "lesson").all()
+    dataset = grade_resource.export(queryset)
+
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    teacher_name = request.user.email.split("@")[0]
+    filename = f"grades_{teacher_name}_{current_date}.csv"
+
+    response = HttpResponse(
+        dataset.export("csv"),
+        content_type="text/csv",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
