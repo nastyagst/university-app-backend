@@ -1,8 +1,14 @@
 from datetime import datetime
 import django_filters
 import tablib
+from django.db import transaction
 from django.http import HttpResponse
-from rest_framework.decorators import api_view, permission_classes, parser_classes
+from rest_framework.decorators import (
+    api_view,
+    permission_classes,
+    parser_classes,
+    action,
+)
 from rest_framework.parsers import MultiPartParser
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
@@ -26,6 +32,7 @@ from .serializers import (
     AttendanceSerializer,
     GradeSerializer,
     ABTestSerializer,
+    BulkGradeSerializer,
 )
 from .models import CustomUser, ScheduleEntry, Lesson, Attendance, Grade, ABTest
 from .services import generate_and_send_otp
@@ -208,6 +215,43 @@ class GradeViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["lesson", "student"]
     permission_classes = [IsAuthenticated, IsTeacherOrAdminOrReadOnlyForStudent]
+
+    @swagger_auto_schema(
+        operation_description="Bulk update or create grades for students. "
+        "Used by the Teacher's Grade Journal.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_ARRAY,
+            items=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    "lesson": openapi.Schema(type=openapi.TYPE_INTEGER),
+                    "student": openapi.Schema(type=openapi.TYPE_INTEGER),
+                    "score": openapi.Schema(type=openapi.TYPE_INTEGER),
+                    "comment": openapi.Schema(
+                        type=openapi.TYPE_STRING, x_nullable=True
+                    ),
+                },
+                required=["lesson", "student", "score"],
+            ),
+        ),
+        responses={200: "Grades processed successfully.", 400: "Invalid data."},
+    )
+    @action(detail=False, methods=["post"])
+    def bulk_update(self, request):
+        serializer = BulkGradeSerializer(data=request.data, many=True)
+        if serializer.is_valid():
+            with transaction.atomic():
+                grades = [Grade(**item) for item in serializer.validated_data]
+                Grade.objects.bulk_create(
+                    grades,
+                    update_conflicts=True,
+                    update_fields=["score", "comment"],
+                    unique_fields=["lesson", "student"],
+                )
+            return Response(
+                {"message": "Grades processed successfully."}, status=status.HTTP_200_OK
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ABTestViewSet(viewsets.ModelViewSet):

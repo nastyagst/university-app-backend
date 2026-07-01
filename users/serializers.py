@@ -223,6 +223,17 @@ class GradeSerializer(serializers.ModelSerializer):
         fields = ["id", "lesson", "student", "student_name", "score", "comment"]
 
 
+class BulkGradeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Grade
+        fields = ["lesson", "student", "score", "comment"]
+
+    def validate_student(self, value):
+        if value.role != CustomUser.Role.STUDENT:
+            raise serializers.ValidationError("Only students can receive grades.")
+        return value
+
+
 class ABTestSerializer(serializers.ModelSerializer):
     class Meta:
         model = ABTest
