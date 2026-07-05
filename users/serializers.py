@@ -1,6 +1,6 @@
 from django.db import transaction
 from rest_framework import serializers
-from users.models import (
+from .models import (
     CustomUser,
     OTPCode,
     ScheduleEntry,
@@ -73,34 +73,27 @@ class OTPVerifySerializer(serializers.Serializer):
 
 
 class FirstLoginSerializer(serializers.ModelSerializer):
-    """
-    Handles filling in first and last name and setting the permanent password.
-    """
-
     first_name = serializers.CharField(required=True, min_length=2, max_length=150)
     last_name = serializers.CharField(required=True, min_length=2, max_length=150)
     password = serializers.CharField(write_only=True, required=True, min_length=8)
 
     class Meta:
         model = CustomUser
-        fields = ["first_name", "last_name", "password"]
+        fields = ["first_name", "last_name", "language", "password"]
 
     def update(self, instance, validated_data):
         instance.first_name = validated_data["first_name"]
         instance.last_name = validated_data["last_name"]
+        if "language" in validated_data:
+            instance.language = validated_data["language"]
 
         instance.set_password(validated_data["password"])
-
         instance.is_password_changed = True
         instance.save()
         return instance
 
 
 class UserShortSerializer(serializers.ModelSerializer):
-    """
-    Short serializer to display classmates in lists.
-    """
-
     full_name = serializers.SerializerMethodField()
 
     class Meta:
@@ -125,6 +118,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "first_name",
             "last_name",
             "role",
+            "language",
             "record_book_number",
             "is_password_changed",
             "group_name",
@@ -152,10 +146,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 
 class ScheduleEntrySerializer(serializers.ModelSerializer):
-    """
-    Serializer for Read-Only Schedule API.
-    """
-
     subject = serializers.CharField(
         source="course_offering.course.name", read_only=True
     )
@@ -238,3 +228,24 @@ class ABTestSerializer(serializers.ModelSerializer):
     class Meta:
         model = ABTest
         fields = ["id", "user", "test_name", "group"]
+
+
+class TodayLessonSerializer(serializers.Serializer):
+    title = serializers.CharField()
+    time = serializers.CharField()
+    room = serializers.CharField()
+    status = serializers.CharField(required=False)
+    group_name = serializers.CharField(required=False)
+
+
+class DashboardResponseSerializer(serializers.Serializer):
+    role = serializers.CharField()
+    active_courses = serializers.IntegerField(required=False)
+    today_overview = TodayLessonSerializer(required=False, allow_null=True)
+
+    gpa = serializers.FloatField(required=False)
+    rank = serializers.CharField(required=False)
+
+    todays_classes = serializers.IntegerField(required=False)
+    student_groups = serializers.IntegerField(required=False)
+    message = serializers.CharField(required=False)
