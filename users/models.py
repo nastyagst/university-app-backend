@@ -8,12 +8,12 @@ from django.utils import timezone
 class CustomUserManager(BaseUserManager):
     """
     Technical class for creating users.
-    Login is done only by email
+    Login is done only by email.
     """
 
     def create_user(self, email, password=None, **extra_fields):
         if not email:
-            raise ValueError("Email обов'язковий")
+            raise ValueError("Email is required.")
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
@@ -30,8 +30,6 @@ class CustomUserManager(BaseUserManager):
 
 
 class Group(models.Model):
-    """Academic groups"""
-
     name = models.CharField(max_length=50, unique=True)
 
     def __str__(self):
@@ -39,8 +37,6 @@ class Group(models.Model):
 
 
 class Department(models.Model):
-    """University departments/faculties"""
-
     name = models.CharField(max_length=255, unique=True)
 
     def __str__(self):
@@ -48,8 +44,6 @@ class Department(models.Model):
 
 
 class Course(models.Model):
-    """Subjects/Courses taught at the university"""
-
     name = models.CharField(max_length=255, unique=True)
 
     def __str__(self):
@@ -57,12 +51,17 @@ class Course(models.Model):
 
 
 class CustomUser(AbstractUser):
-    """Main user table (Students, Teachers, Admins)"""
-
     class Role(models.TextChoices):
         STUDENT = "STUDENT", "Student"
         ADMIN = "ADMIN", "Admin"
         TEACHER = "TEACHER", "Teacher"
+
+    class LanguageChoices(models.TextChoices):
+        ENGLISH = "en", "English"
+        ITALIAN = "it", "Italiano"
+        GERMAN = "de", "Deutsch"
+        SPANISH = "es", "Espanol"
+        UKRAINIAN = "uk", "Ukrainian"
 
     username = None
 
@@ -71,6 +70,11 @@ class CustomUser(AbstractUser):
     first_name = models.CharField(max_length=150)
     last_name = models.CharField(max_length=150)
     role = models.CharField(max_length=10, choices=Role.choices, default=Role.STUDENT)
+    language = models.CharField(
+        max_length=2,
+        choices=LanguageChoices.choices,
+        default=LanguageChoices.ENGLISH,
+    )
     record_book_number = models.CharField(
         max_length=50, unique=True, null=True, blank=True
     )
@@ -101,8 +105,6 @@ class CustomUser(AbstractUser):
 
 
 class OTPCode(models.Model):
-    """Table for saving one-time codes."""
-
     user = models.ForeignKey(
         CustomUser, on_delete=models.CASCADE, related_name="otp_codes"
     )
@@ -122,7 +124,7 @@ class OTPCode(models.Model):
 
 
 class Semester(models.Model):
-    number = models.PositiveSmallIntegerField(help_text="Номер семестру (1 або 2)")
+    number = models.PositiveSmallIntegerField(help_text="Semester number (1 or 2)")
     year = models.CharField(max_length=9)
     date_start = models.DateField(null=True, blank=True)
     date_end = models.DateField(null=True, blank=True)
@@ -133,12 +135,12 @@ class Semester(models.Model):
         verbose_name_plural = "Semesters"
 
     def __str__(self):
-        return f"{self.year} — Семестр {self.number}"
+        return f"{self.year} — Semester {self.number}"
 
 
 class Room(models.Model):
     building = models.CharField(max_length=50)
-    number = models.CharField(max_length=20, help_text="Номер аудиторії")
+    number = models.CharField(max_length=20, help_text="Room number")
     type = models.CharField(max_length=50, blank=True)
 
     class Meta:
@@ -147,7 +149,7 @@ class Room(models.Model):
         verbose_name_plural = "Rooms"
 
     def __str__(self):
-        return f"Корп. {self.building}, ауд. {self.number}"
+        return f"Bldg. {self.building}, room {self.number}"
 
 
 class TimeSlot(models.Model):
@@ -161,7 +163,7 @@ class TimeSlot(models.Model):
         verbose_name_plural = "Time Slots"
 
     def __str__(self):
-        return f"Пара {self.number} ({self.time_start.strftime('%H:%M')} - {self.time_end.strftime('%H:%M')})"
+        return f"Slot {self.number} ({self.time_start.strftime('%H:%M')} - {self.time_end.strftime('%H:%M')})"
 
 
 class CourseOffering(models.Model):
@@ -222,7 +224,7 @@ class Lesson(models.Model):
     )
     room = models.ForeignKey(Room, on_delete=models.SET_NULL, null=True, blank=True)
     topic = models.CharField(
-        max_length=255, blank=True, null=True, help_text="Тема заняття"
+        max_length=255, blank=True, null=True, help_text="Lesson topic"
     )
     is_cancelled = models.BooleanField(default=False)
 
@@ -237,9 +239,9 @@ class Lesson(models.Model):
 
 class Attendance(models.Model):
     class Status(models.TextChoices):
-        PRESENT = "PRESENT", "Присутній"
-        ABSENT = "ABSENT", "Відсутній"
-        LATE = "LATE", "Запізнився"
+        PRESENT = "PRESENT", "Present"
+        ABSENT = "ABSENT", "Absent"
+        LATE = "LATE", "Late"
 
     lesson = models.ForeignKey(
         Lesson,
@@ -328,7 +330,7 @@ class StudentProfile(models.Model):
     enrollment_year = models.PositiveIntegerField(null=True, blank=True)
     faculty = models.CharField(max_length=255, null=True, blank=True)
     degree_level = models.CharField(
-        max_length=50, null=True, blank=True, help_text="Бакалавр/Магістр"
+        max_length=50, null=True, blank=True, help_text="Bachelor/Master"
     )
 
     def __str__(self):

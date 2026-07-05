@@ -13,12 +13,12 @@ from rest_framework.parsers import MultiPartParser
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.views import APIView
+from rest_framework import status, viewsets, permissions, serializers, generics
 from rest_framework.response import Response
-from rest_framework import status, viewsets
 from rest_framework_simplejwt.tokens import RefreshToken
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.throttling import AnonRateThrottle
+from drf_spectacular.utils import extend_schema, inline_serializer
 
 from .permissions import IsTeacherOrAdminOrReadOnlyForStudent
 from .resources import GradeResource
@@ -33,77 +33,128 @@ from .serializers import (
     GradeSerializer,
     ABTestSerializer,
     BulkGradeSerializer,
+    DashboardResponseSerializer,
 )
 from .models import CustomUser, ScheduleEntry, Lesson, Attendance, Grade, ABTest
 from .services import generate_and_send_otp
+from .analytics import get_student_dashboard_data, get_teacher_dashboard_data
 
 
 class OTPRequestThrottle(AnonRateThrottle):
     rate = "3/min"
 
 
-class OTPRequestView(APIView):
-    """
-    POST /api/auth/request-otp/
-    """
-
+class OTPRequestView(generics.GenericAPIView):
+    serializer_class = OTPRequestSerializer
     throttle_classes = [OTPRequestThrottle]
 
-    def post(self, request):
-        serializer = OTPRequestSerializer(data=request.data)
-        if serializer.is_valid():
-            email = serializer.validated_data["email"]
-            user = CustomUser.objects.get(email=email)
-            generate_and_send_otp(user=user, purpose="ACTIVATION")
-            return Response(
-                {"message": "Verification code has been sent to your email."},
-                status=status.HTTP_200_OK,
-            )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    @extend_schema(
+        summary="Request verification code",
+        description="Sends a 6-digit OTP verification code to the provided email address.",
+        responses={
+            200: inline_serializer(
+                name="OTPRequestSuccessResponse",
+                fields={"message": serializers.CharField()},
+            ),
+            400: inline_serializer(
+                name="OTPRequestErrorResponse",
+                fields={"email": serializers.ListField(child=serializers.CharField())},
+            ),
+        },
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data["email"]
+        user = CustomUser.objects.get(email=email)
+        generate_and_send_otp(user=user, purpose="ACTIVATION")
+        return Response(
+            {"message": "Verification code has been sent to your email."},
+            status=status.HTTP_200_OK,
+        )
 
 
-class OTPVerifyView(APIView):
-    """
-    POST /api/auth/verify-otp/
-    """
+class OTPVerifyView(generics.GenericAPIView):
+    serializer_class = OTPVerifySerializer
 
-    def post(self, request):
-        serializer = OTPVerifySerializer(data=request.data)
-        if serializer.is_valid():
-            user = serializer.validated_data["user"]
-            otp_entry = serializer.validated_data["otp_entry"]
-
-            otp_entry.is_used = True
-            otp_entry.save()
-
-            refresh = RefreshToken.for_user(user)
-            refresh["role"] = user.role
-
-            return Response(
-                {
-                    "refresh": str(refresh),
-                    "access": str(refresh.access_token),
-                    "user": {
-                        "email": user.email,
-                        "first_name": user.first_name,
-                        "last_name": user.last_name,
-                        "role": user.role,
-                        "is_password_changed": user.is_password_changed,
-                    },
+    @extend_schema(
+        summary="Verify OTP and get JWT tokens",
+        description="Validates the 6-digit OTP code and returns JWT access/refresh tokens along with user details.",
+        responses={
+            200: inline_serializer(
+                name="OTPVerifySuccessResponse",
+                fields={
+                    "refresh": serializers.CharField(),
+                    "access": serializers.CharField(),
+                    "user": inline_serializer(
+                        name="AuthUserDetails",
+                        fields={
+                            "email": serializers.EmailField(),
+                            "first_name": serializers.CharField(),
+                            "last_name": serializers.CharField(),
+                            "role": serializers.CharField(),
+                            "is_password_changed": serializers.BooleanField(),
+                        },
+                    ),
                 },
-                status=status.HTTP_200_OK,
-            )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            ),
+            400: inline_serializer(
+                name="OTPVerifyErrorResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+        },
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = serializer.validated_data["user"]
+        otp_entry = serializer.validated_data["otp_entry"]
+
+        otp_entry.is_used = True
+        otp_entry.save()
+
+        refresh = RefreshToken.for_user(user)
+        refresh["role"] = user.role
+
+        return Response(
+            {
+                "refresh": str(refresh),
+                "access": str(refresh.access_token),
+                "user": {
+                    "email": user.email,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "role": user.role,
+                    "is_password_changed": user.is_password_changed,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
-class FirstLoginView(APIView):
-    """
-    POST /api/auth/profile/first-login/
-    """
-
+class FirstLoginView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = FirstLoginSerializer
 
-    def post(self, request):
+    @extend_schema(
+        summary="Complete first login profile setup",
+        description="Updates initial user profile details upon first successful login.",
+        responses={
+            200: inline_serializer(
+                name="FirstLoginSuccessResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "user": FirstLoginSerializer(),
+                },
+            ),
+            400: inline_serializer(
+                name="FirstLoginErrorResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+        },
+    )
+    def post(self, request, *args, **kwargs):
         user = request.user
 
         if user.is_password_changed:
@@ -111,39 +162,35 @@ class FirstLoginView(APIView):
                 {"detail": "Profile data has already been set during the first login."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        serializer = FirstLoginSerializer(user, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(
-                {
-                    "message": "Profile updated successfully.",
-                    "user": serializer.data,
-                },
-                status=status.HTTP_200_OK,
-            )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-class UserProfileView(APIView):
-    """
-    GET /api/auth/profile/ - Retrieve current user profile
-    PATCH /api/auth/profile/ - Update personal data
-    """
-
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        serializer = UserProfileSerializer(request.user)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    def patch(self, request):
-        serializer = UserProfileSerializer(
-            request.user, data=request.data, partial=True
+        serializer = self.get_serializer(user, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            {
+                "message": "Profile updated successfully.",
+                "user": serializer.data,
+            },
+            status=status.HTTP_200_OK,
         )
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserProfileView(generics.RetrieveUpdateAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = UserProfileSerializer
+
+    def get_object(self):
+        return self.request.user
+
+    @extend_schema(summary="Retrieve user profile")
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(summary="Update user profile")
+    def patch(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+
+    def put(self, request, *args, **kwargs):
+        return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 
 class ScheduleFilter(django_filters.FilterSet):
@@ -159,10 +206,6 @@ class ScheduleFilter(django_filters.FilterSet):
 
 
 class ScheduleViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    GET /schedule/ - Retrieve a list of all schedule entries.
-    """
-
     serializer_class = ScheduleEntrySerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = ScheduleFilter
@@ -178,11 +221,6 @@ class ScheduleViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class LessonViewSet(viewsets.ModelViewSet):
-    """
-    GET /lessons/ - Retrieve a list of all lessons.
-    POST /lessons/ - Create a new lesson.
-    """
-
     queryset = Lesson.objects.select_related(
         "course_offering__course", "course_offering__group", "time_slot", "room"
     ).all()
@@ -192,11 +230,6 @@ class LessonViewSet(viewsets.ModelViewSet):
 
 
 class AttendanceViewSet(viewsets.ModelViewSet):
-    """
-    GET /attendance/ - Retrieve attendance records.
-    POST /attendance/ - Mark student attendance.
-    """
-
     queryset = Attendance.objects.select_related("lesson", "student").all()
     serializer_class = AttendanceSerializer
     filter_backends = [DjangoFilterBackend]
@@ -205,11 +238,6 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
 
 class GradeViewSet(viewsets.ModelViewSet):
-    """
-    GET /grades/ - Retrieve student grades.
-    POST /grades/ - Add a new grade.
-    """
-
     queryset = Grade.objects.select_related("lesson", "student").all()
     serializer_class = GradeSerializer
     filter_backends = [DjangoFilterBackend]
@@ -255,10 +283,6 @@ class GradeViewSet(viewsets.ModelViewSet):
 
 
 class ABTestViewSet(viewsets.ModelViewSet):
-    """
-    GET /ab-tests/ - Retrieve A/B test analytics data.
-    """
-
     queryset = ABTest.objects.all()
     serializer_class = ABTestSerializer
     filter_backends = [DjangoFilterBackend]
@@ -363,3 +387,27 @@ def teacher_export_view(request):
     )
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
+
+class DashboardViewSet(viewsets.GenericViewSet):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = DashboardResponseSerializer
+
+    @extend_schema(
+        summary="Get user dashboard analytics",
+        description="Returns GPA and grade statistics for students, or course overview for teachers.",
+    )
+    def list(self, request):
+        user = request.user
+
+        if user.role == CustomUser.Role.STUDENT:
+            data = get_student_dashboard_data(user)
+        elif user.role == CustomUser.Role.TEACHER:
+            data = get_teacher_dashboard_data(user)
+        else:
+            data = {
+                "role": user.role,
+                "message": "No dashboard available for this role.",
+            }
+
+        return Response(data)
