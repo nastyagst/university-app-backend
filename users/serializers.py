@@ -330,3 +330,38 @@ class CourseOfferingUpdateSerializer(serializers.ModelSerializer):
             "attendance_required_percentage",
             "assessment_rules",
         ]
+
+
+class BulkAttendanceSerializer(serializers.ModelSerializer):
+    """
+    Serializer for marking attendance for multiple students at once.
+    """
+
+    class Meta:
+        model = Attendance
+        fields = ["lesson", "student", "status"]
+
+    def validate_student(self, value):
+        if value.role != CustomUser.Role.STUDENT:
+            raise serializers.ValidationError(
+                "Only students can have attendance records."
+            )
+        return value
+
+
+class AttendanceSummarySerializer(serializers.Serializer):
+    """
+    Serializer for displaying student attendance percentage and status.
+    """
+
+    course_offering_id = serializers.IntegerField()
+    course_name = serializers.CharField()
+    student_id = serializers.IntegerField()
+    student_name = serializers.CharField()
+    total_lessons = serializers.IntegerField()
+    present_count = serializers.IntegerField()
+    late_count = serializers.IntegerField()
+    absent_count = serializers.IntegerField()
+    attendance_percentage = serializers.FloatField()
+    required_percentage = serializers.IntegerField()
+    is_passing = serializers.BooleanField()
