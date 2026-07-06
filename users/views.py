@@ -34,6 +34,9 @@ from .serializers import (
     ABTestSerializer,
     BulkGradeSerializer,
     DashboardResponseSerializer,
+    ChangeRoomSerializer,
+    CancelLessonSerializer,
+    RescheduleLessonSerializer,
 )
 from .models import CustomUser, ScheduleEntry, Lesson, Attendance, Grade, ABTest
 from .services import generate_and_send_otp
@@ -205,10 +208,18 @@ class ScheduleFilter(django_filters.FilterSet):
         fields = ["group_id", "teacher_id", "day_of_week"]
 
 
-class ScheduleViewSet(viewsets.ReadOnlyModelViewSet):
+class ScheduleViewSet(viewsets.ModelViewSet):
+    """
+    GET /schedule/ - Retrieve a list of all schedule entries.
+    POST /schedule/ - Create a new schedule entry.
+    PATCH /schedule/{id}/ - Update a schedule entry.
+    DELETE /schedule/{id}/ - Remove a schedule entry.
+    """
+
     serializer_class = ScheduleEntrySerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = ScheduleFilter
+    permission_classes = [IsTeacherOrAdminOrReadOnlyForStudent]
 
     def get_queryset(self):
         return ScheduleEntry.objects.select_related(
@@ -219,14 +230,95 @@ class ScheduleViewSet(viewsets.ReadOnlyModelViewSet):
             "time_slot",
         ).all()
 
+    @extend_schema(
+        summary="Change permanent schedule room",
+        description="Teacher action: permanently changes the assigned room for a weekly schedule entry.",
+        request=ChangeRoomSerializer,
+        responses={200: ScheduleEntrySerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="change-room")
+    def change_room(self, request, pk=None):
+        entry = self.get_object()
+        serializer = ChangeRoomSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        entry.room_id = serializer.validated_data["new_room_id"]
+        entry.save()
+
+        return Response(ScheduleEntrySerializer(entry).data, status=status.HTTP_200_OK)
+
 
 class LessonViewSet(viewsets.ModelViewSet):
+    """
+    GET /lessons/ - Retrieve a list of all lessons.
+    POST /lessons/ - Create a new lesson.
+    """
+
     queryset = Lesson.objects.select_related(
         "course_offering__course", "course_offering__group", "time_slot", "room"
     ).all()
     serializer_class = LessonSerializer
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["course_offering__group_id", "date"]
+    filterset_fields = ["course_offering__group_id", "date", "is_cancelled"]
+    permission_classes = [IsTeacherOrAdminOrReadOnlyForStudent]
+
+    @extend_schema(
+        summary="Reschedule a lesson",
+        description="Teacher action: moves a lesson to a new date, time slot, and optionally a new room.",
+        request=RescheduleLessonSerializer,
+        responses={200: LessonSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="reschedule")
+    def reschedule(self, request, pk=None):
+        lesson = self.get_object()
+        serializer = RescheduleLessonSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        data = serializer.validated_data
+        lesson.date = data["new_date"]
+        lesson.time_slot_id = data["new_time_slot_id"]
+
+        if data.get("new_room_id"):
+            lesson.room_id = data["new_room_id"]
+
+        lesson.is_cancelled = False
+        lesson.save()
+
+        return Response(LessonSerializer(lesson).data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary="Change lesson room",
+        description="Teacher action: assigns a new auditorium/room to an existing lesson.",
+        request=ChangeRoomSerializer,
+        responses={200: LessonSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="change-room")
+    def change_room(self, request, pk=None):
+        lesson = self.get_object()
+        serializer = ChangeRoomSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        lesson.room_id = serializer.validated_data["new_room_id"]
+        lesson.save()
+
+        return Response(LessonSerializer(lesson).data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary="Cancel a lesson",
+        description="Teacher action: marks a lesson as cancelled.",
+        request=CancelLessonSerializer,
+        responses={200: LessonSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="cancel")
+    def cancel(self, request, pk=None):
+        lesson = self.get_object()
+        serializer = CancelLessonSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        lesson.is_cancelled = True
+        lesson.save()
+
+        return Response(LessonSerializer(lesson).data, status=status.HTTP_200_OK)
 
 
 class AttendanceViewSet(viewsets.ModelViewSet):

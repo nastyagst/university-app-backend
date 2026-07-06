@@ -249,3 +249,26 @@ class DashboardResponseSerializer(serializers.Serializer):
     todays_classes = serializers.IntegerField(required=False)
     student_groups = serializers.IntegerField(required=False)
     message = serializers.CharField(required=False)
+
+
+class RescheduleLessonSerializer(serializers.Serializer):
+    new_date = serializers.DateField(help_text="New date for the lesson (YYYY-MM-DD)")
+    new_time_slot_id = serializers.IntegerField(help_text="ID of the new time slot")
+    new_room_id = serializers.IntegerField(
+        required=False, allow_null=True, help_text="ID of the new room (optional)"
+    )
+    reason = serializers.CharField(
+        required=False, allow_blank=True, help_text="Reason for rescheduling"
+    )
+
+
+class ChangeRoomSerializer(serializers.Serializer):
+    new_room_id = serializers.IntegerField(help_text="ID of the new room/auditorium")
+
+
+class CancelLessonSerializer(serializers.Serializer):
+    reason = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="Optional reason for cancellation",
+    )
