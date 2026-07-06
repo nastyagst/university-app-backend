@@ -37,8 +37,18 @@ from .serializers import (
     ChangeRoomSerializer,
     CancelLessonSerializer,
     RescheduleLessonSerializer,
+    CourseOfferingDetailSerializer,
+    CourseOfferingUpdateSerializer,
 )
-from .models import CustomUser, ScheduleEntry, Lesson, Attendance, Grade, ABTest
+from .models import (
+    CustomUser,
+    ScheduleEntry,
+    Lesson,
+    Attendance,
+    Grade,
+    ABTest,
+    CourseOffering,
+)
 from .services import generate_and_send_otp
 from .analytics import get_student_dashboard_data, get_teacher_dashboard_data
 
@@ -503,3 +513,25 @@ class DashboardViewSet(viewsets.GenericViewSet):
             }
 
         return Response(data)
+
+
+class CourseOfferingViewSet(viewsets.ModelViewSet):
+    """
+    GET /courses/ - Retrieve list of courses.
+    GET /courses/{id}/ - Retrieve detailed course card and syllabus.
+    PATCH /courses/{id}/ - Update course details (Teachers/Admins only).
+    """
+
+    queryset = (
+        CourseOffering.objects.select_related("course", "teacher", "group", "semester")
+        .prefetch_related("schedule_entries__room", "schedule_entries__time_slot")
+        .all()
+    )
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["group_id", "teacher_id", "semester_id"]
+    permission_classes = [IsTeacherOrAdminOrReadOnlyForStudent]
+
+    def get_serializer_class(self):
+        if self.action in ["update", "partial_update"]:
+            return CourseOfferingUpdateSerializer
+        return CourseOfferingDetailSerializer

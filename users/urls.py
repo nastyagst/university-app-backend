@@ -13,6 +13,7 @@ from .views import (
     teacher_import_view,
     teacher_export_view,
     DashboardViewSet,
+    CourseOfferingViewSet,
 )
 
 router = DefaultRouter()
@@ -22,6 +23,7 @@ router.register(r"attendance", AttendanceViewSet, basename="attendance")
 router.register(r"grades", GradeViewSet, basename="grade")
 router.register(r"ab-tests", ABTestViewSet, basename="abtest")
 router.register(r"dashboard", DashboardViewSet, basename="dashboard")
+router.register("courses", CourseOfferingViewSet, basename="courses")
 
 urlpatterns = [
     path("auth/request-otp/", OTPRequestView.as_view(), name="request_otp"),

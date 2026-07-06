@@ -8,6 +8,7 @@ from .models import (
     Attendance,
     Grade,
     ABTest,
+    CourseOffering,
 )
 
 
@@ -272,3 +273,60 @@ class CancelLessonSerializer(serializers.Serializer):
         allow_blank=True,
         help_text="Optional reason for cancellation",
     )
+
+
+class CourseOfferingDetailSerializer(serializers.ModelSerializer):
+    course_name = serializers.CharField(source="course.name", read_only=True)
+    group_name = serializers.CharField(source="group.name", read_only=True)
+    teacher_name = serializers.SerializerMethodField()
+    teacher_email = serializers.EmailField(source="teacher.email", read_only=True)
+    teacher_telegram_url = serializers.SerializerMethodField()
+    schedule = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CourseOffering
+        fields = [
+            "id",
+            "course_name",
+            "group_name",
+            "teacher_name",
+            "teacher_email",
+            "teacher_telegram_url",
+            "telegram_group_url",
+            "description",
+            "ects_credits",
+            "attendance_required_percentage",
+            "assessment_rules",
+            "schedule",
+        ]
+
+    def get_teacher_name(self, obj):
+        return f"Prof {obj.teacher.first_name} {obj.teacher.last_name}"
+
+    def get_teacher_telegram_url(self, obj):
+        if hasattr(obj.teacher, "teacherprofile") and obj.teacher.teacherprofile:
+            return obj.teacher.teacherprofile.telegram_url
+        return None
+
+    def get_schedule(self, obj):
+        entries = obj.schedule_entries.select_related("room", "time_slot").all()
+        return [
+            {
+                "day_of_week": entry.day_of_week,
+                "time": f"{entry.time_slot.time_start.strftime('%H:%M')} - {entry.time_slot.time_end.strftime('%H:%M')}",
+                "room": f"Room {entry.room.number}",
+            }
+            for entry in entries
+        ]
+
+
+class CourseOfferingUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CourseOffering
+        fields = [
+            "description",
+            "telegram_group_url",
+            "ects_credits",
+            "attendance_required_percentage",
+            "assessment_rules",
+        ]

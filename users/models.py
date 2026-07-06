@@ -182,8 +182,21 @@ class CourseOffering(models.Model):
     group = models.ForeignKey(
         Group, on_delete=models.CASCADE, related_name="course_offerings"
     )
-    description = models.TextField(blank=True, null=True)
+    description = models.TextField(
+        blank=True, null=True, help_text="Course syllabus and description"
+    )
     telegram_group_url = models.URLField(max_length=255, blank=True, null=True)
+    ects_credits = models.PositiveSmallIntegerField(
+        default=5, help_text="ECTS credits count"
+    )
+    attendance_required_percentage = models.PositiveSmallIntegerField(
+        default=75, help_text="Required attendance percentage"
+    )
+    assessment_rules = models.CharField(
+        max_length=255,
+        default="60% coursework / 40% exam",
+        help_text="Grading breakdown",
+    )
 
     class Meta:
         unique_together = ("course", "teacher", "semester", "group")
