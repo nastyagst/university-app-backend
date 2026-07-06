@@ -39,6 +39,8 @@ from .serializers import (
     RescheduleLessonSerializer,
     CourseOfferingDetailSerializer,
     CourseOfferingUpdateSerializer,
+    AttendanceSummarySerializer,
+    BulkAttendanceSerializer,
 )
 from .models import (
     CustomUser,
@@ -332,11 +334,149 @@ class LessonViewSet(viewsets.ModelViewSet):
 
 
 class AttendanceViewSet(viewsets.ModelViewSet):
+    """
+    GET /attendance/ - Retrieve attendance records.
+    POST /attendance/ - Mark student attendance.
+    """
+
     queryset = Attendance.objects.select_related("lesson", "student").all()
     serializer_class = AttendanceSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["lesson", "student", "status"]
     permission_classes = [IsAuthenticated, IsTeacherOrAdminOrReadOnlyForStudent]
+
+    @swagger_auto_schema(
+        operation_description="Bulk mark attendance for a class. "
+        "Allows teacher to submit attendance for all students in one request.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_ARRAY,
+            items=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    "lesson": openapi.Schema(type=openapi.TYPE_INTEGER),
+                    "student": openapi.Schema(type=openapi.TYPE_INTEGER),
+                    "status": openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        enum=["PRESENT", "ABSENT", "LATE"],
+                    ),
+                },
+                required=["lesson", "student", "status"],
+            ),
+        ),
+        responses={200: "Attendance processed successfully.", 400: "Invalid data."},
+    )
+    @action(detail=False, methods=["post"], url_path="bulk-mark")
+    def bulk_mark(self, request):
+        serializer = BulkAttendanceSerializer(data=request.data, many=True)
+        if serializer.is_valid():
+            with transaction.atomic():
+                records = [Attendance(**item) for item in serializer.validated_data]
+                Attendance.objects.bulk_create(
+                    records,
+                    update_conflicts=True,
+                    update_fields=["status"],
+                    unique_fields=["lesson", "student"],
+                )
+            return Response(
+                {"message": "Attendance processed successfully."},
+                status=status.HTTP_200_OK,
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        summary="Get student attendance summary and percentage",
+        description="Calculates current attendance percentage for a student in a specific course offering.",
+        parameters=[
+            openapi.Parameter(
+                name="course_offering_id",
+                in_=openapi.IN_QUERY,
+                type=openapi.TYPE_INTEGER,
+                required=True,
+                description="ID of the course offering",
+            ),
+            openapi.Parameter(
+                name="student_id",
+                in_=openapi.IN_QUERY,
+                type=openapi.TYPE_INTEGER,
+                required=False,
+                description="ID of the student (optional for students, defaults to current user)",
+            ),
+        ],
+        responses={200: AttendanceSummarySerializer},
+    )
+    @action(detail=False, methods=["get"], url_path="summary")
+    def summary(self, request):
+        course_offering_id = request.query_params.get("course_offering_id")
+        if not course_offering_id:
+            return Response(
+                {"error": "course_offering_id query parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            offering = CourseOffering.objects.select_related("course").get(
+                pk=course_offering_id
+            )
+        except CourseOffering.DoesNotExist:
+            return Response(
+                {"error": "Course offering not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        student_id = request.query_params.get("student_id")
+        if request.user.role == CustomUser.Role.STUDENT:
+            student = request.user
+        else:
+            if not student_id:
+                return Response(
+                    {"error": "student_id is required for teachers/admins."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                student = CustomUser.objects.get(
+                    pk=student_id, role=CustomUser.Role.STUDENT
+                )
+            except CustomUser.DoesNotExist:
+                return Response(
+                    {"error": "Student not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+        lessons = Lesson.objects.filter(course_offering=offering, is_cancelled=False)
+        total_lessons = lessons.count()
+
+        attendances = Attendance.objects.filter(lesson__in=lessons, student=student)
+        present_count = attendances.filter(status=Attendance.Status.PRESENT).count()
+        late_count = attendances.filter(status=Attendance.Status.LATE).count()
+        absent_count = attendances.filter(status=Attendance.Status.ABSENT).count()
+
+        if total_lessons > 0:
+            percentage = round(
+                ((present_count + (late_count * 0.5)) / total_lessons) * 100, 2
+            )
+        else:
+            percentage = 100.0
+
+        required_pct = offering.attendance_required_percentage
+        is_passing = percentage >= required_pct
+
+        data = {
+            "course_offering_id": offering.id,
+            "course_name": offering.course.name,
+            "student_id": student.id,
+            "student_name": f"{student.first_name} {student.last_name}",
+            "total_lessons": total_lessons,
+            "present_count": present_count,
+            "late_count": late_count,
+            "absent_count": absent_count,
+            "attendance_percentage": percentage,
+            "required_percentage": required_pct,
+            "is_passing": is_passing,
+        }
+
+        return Response(
+            AttendanceSummarySerializer(data).data, status=status.HTTP_200_OK
+        )
 
 
 class GradeViewSet(viewsets.ModelViewSet):
